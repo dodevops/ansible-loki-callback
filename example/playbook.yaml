@@ -1,0 +1,48 @@
+- name: Test1
+  hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Call github
+      uri:
+        url: 'https://github.com'
+
+- name: Testdiff
+  hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Create temp file
+      tempfile: {}
+      register: tempfile
+    - name: Write tempfile
+      copy:
+        dest: "{{ tempfile.path }}"
+        content: "test"
+
+- name: TestFail
+  hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Produce failure
+      command: exit 1
+      ignore_errors: yes
+
+- name: Testskipped
+  hosts: 127.0.0.1
+  connection: local
+  gather_facts: no
+  tasks:
+    - name: Skip it
+      command: exit 1
+      when: impossible is defined
+
+- name: Testunreachable
+  hosts: unreachable
+  gather_facts: no
+  ignore_errors: yes
+  tasks:
+    - name: Call github
+      uri:
+        url: 'https://github.com'
