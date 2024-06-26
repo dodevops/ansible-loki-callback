@@ -5,4 +5,4 @@ jsonpickle==3.2.1
 python-logging-loki @ git+https://github.com/waylayio/python-logging-loki.git@69428186d64a560eda20701f0910b86bedf0ebcf
 requests==2.32.3
 rfc3339==6.2
-urllib3==2.2.1
+urllib3==2.2.2
