@@ -18,14 +18,59 @@ DOCUMENTATION = '''
     requirements:
       - set as loki in configuration
     options:
+      loki_url:
+        description: URL to access loki gateway
+        required: True
+        env:
+          - name: LOKI_URL
+        ini:
+          - section: loki
+            key: url
+      loki_username:
+        description: Username to access loki gateway
+        env:
+          - name: LOKI_USERNAME
+        ini:
+          - section: loki
+            key: username
+      loki_password:
+        description: Password to access loki gateway
+        env:
+          - name: LOKI_PASSWORD
+        ini:
+          - section: loki
+            key: password
+      loki_org_id:
+        description: Organization to use as a tenant when connecting to loki
+        env:
+          - name: LOKI_ORG_ID
+        ini:
+          - section: loki
+            key: org_id
+      loki_default_tags:
+        description: "Tags (key:value) to set for each log line"
+        env:
+          - name: LOKI_DEFAULT_TAGS
+        ini:
+          - section: loki
+            key: default_tags
+        type: list
       result_format:
-        name: Result format
         default: json
         description: Format used in results (will be set to json)
       pretty_results:
-        name: Print results pretty
         default: False
         description: Whether to print results pretty (will be set to false)
+      enabled_dumps:
+        description: |
+            Dumps to enable. The values playbook, diff, play, task and runner are available. 
+            This usually requires that max_line_size in Loki is set to a higher value than 256kb.
+        type: list
+        env:
+          - name: LOKI_ENABLED_DUMPS
+        ini:
+          - section: loki
+            key: enabled_dumps
 '''
 
 
@@ -37,28 +82,26 @@ class CallbackModule(CallbackBase):
     CALLBACK_NAME = 'loki'
     ALL_METRICS = ["changed", "custom", "dark", "failures", "ignored", "ok", "processed", "rescued", "skipped"]
 
-    def __init__(self):
-        super().__init__()
-
-        if "LOKI_URL" not in os.environ:
-            raise "LOKI_URL environment variable not specified."
-
+    def __init__(self, display=None, options=None):
+        super().__init__(display, options)
+        self.set_options()
         auth = ()
-        if "LOKI_USERNAME" in os.environ and "LOKI_PASSWORD" in os.environ:
-            auth = (os.environ["LOKI_USERNAME"], os.environ["LOKI_PASSWORD"])
+
+        if self.get_option("loki_username") and self.get_option("loki_password"):
+            auth = (self.get_option("loki_username"), self.get_option("loki_password"))
 
         headers = {}
-        if "LOKI_ORG_ID" in os.environ:
-            headers["X-Scope-OrgID"] = os.environ["LOKI_ORG_ID"]
+        if self.get_option("loki_org_id"):
+            headers["X-Scope-OrgID"] = self.get_option("loki_org_id")
 
         tags = {}
-        if "LOKI_DEFAULT_TAGS" in os.environ:
-            for tagvalue in os.environ["LOKI_DEFAULT_TAGS"].split(","):
+        if self.get_option("loki_default_tags"):
+            for tagvalue in self.get_option("loki_default_tags"):
                 (tag, value) = tagvalue.split(":")
                 tags[tag] = value
 
         handler = logging_loki.LokiHandler(
-            url=os.environ["LOKI_URL"],
+            url=self.get_option("loki_url"),
             tags=tags,
             auth=auth,
             headers=headers,
@@ -77,6 +120,10 @@ class CallbackModule(CallbackBase):
         self.set_option("result_format", "json")
         self.set_option("pretty_results", False)
 
+    def _dump_enabled(self, dump):
+        return self.get_option("enabled_dumps") and dump in self.get_option("enabled_dumps")
+
+
     def v2_playbook_on_start(self, playbook):
         self.playbook = os.path.join(playbook._basedir, playbook._file_name)
         self.run_timestamp = datetime.datetime.now().isoformat()
@@ -84,10 +131,11 @@ class CallbackModule(CallbackBase):
             "Starting playbook %s" % self.playbook,
             extra={"tags": {"playbook": self.playbook, "run_timestamp": self.run_timestamp}}
         )
-        self.logger.debug(
-            jsonpickle.encode(playbook.__dict__),
-            extra={"tags": {"playbook": self.playbook, "run_timestamp": self.run_timestamp, "dump": "playbook"}}
-        )
+        if self._dump_enabled("playbook"):
+            self.logger.debug(
+                jsonpickle.encode(playbook.__dict__),
+                extra={"tags": {"playbook": self.playbook, "run_timestamp": self.run_timestamp, "dump": "playbook"}}
+            )
 
     def v2_playbook_on_play_start(self, play):
         self.current_play = play.name
@@ -95,17 +143,18 @@ class CallbackModule(CallbackBase):
             "Starting play %s" % play.name,
             extra={"tags": {"playbook": self.playbook, "run_timestamp": self.run_timestamp, "play": self.current_play}}
         )
-        self.logger.debug(
-            jsonpickle.encode(play.__dict__),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "dump": "play"
+        if self._dump_enabled("play"):
+            self.logger.debug(
+                jsonpickle.encode(play.__dict__),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "dump": "play"
+                    }
                 }
-            }
-        )
+            )
 
     def v2_playbook_on_task_start(self, task, is_conditional):
         self.current_task = task.name
@@ -120,18 +169,19 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        self.logger.debug(
-            jsonpickle.encode(task.__dict__),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "task": self.current_task,
-                    "dump": "task"
+        if self._dump_enabled("task"):
+            self.logger.debug(
+                jsonpickle.encode(task.__dict__),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "task": self.current_task,
+                        "dump": "task"
+                    }
                 }
-            }
-        )
+            )
 
     def v2_runner_on_ok(self, result):
         self.logger.debug(
@@ -145,18 +195,19 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        self.logger.debug(
-            self._dump_results(result._result),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "task": self.current_task,
-                    "dump": "runner"
+        if self._dump_enabled("runner"):
+            self.logger.debug(
+                self._dump_results(result._result),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "task": self.current_task,
+                        "dump": "runner"
+                    }
                 }
-            }
-        )
+            )
 
     def v2_runner_on_failed(self, result, ignore_errors=False):
         level = logging.WARNING if ignore_errors else logging.ERROR
@@ -176,18 +227,19 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        self.logger.debug(
-            self._dump_results(result._result),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "task": self.current_task,
-                    "dump": "runner"
+        if self._dump_enabled("runner"):
+            self.logger.debug(
+                self._dump_results(result._result),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "task": self.current_task,
+                        "dump": "runner"
+                    }
                 }
-            }
-        )
+            )
 
     def v2_runner_on_skipped(self, result):
         self.logger.info(
@@ -201,18 +253,19 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        self.logger.debug(
-            self._dump_results(result._result),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "task": self.current_task,
-                    "dump": "runner"
+        if self._dump_enabled("runner"):
+            self.logger.debug(
+                self._dump_results(result._result),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "task": self.current_task,
+                        "dump": "runner"
+                    }
                 }
-            }
-        )
+            )
 
     def runner_on_unreachable(self, host, result):
         self.logger.error(
@@ -226,18 +279,19 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        self.logger.debug(
-            self._dump_results(result),
-            extra={
-                "tags": {
-                    "playbook": self.playbook,
-                    "run_timestamp": self.run_timestamp,
-                    "play": self.current_play,
-                    "task": self.current_task,
-                    "dump": "runner"
+        if self._dump_enabled("runner"):
+            self.logger.debug(
+                self._dump_results(result),
+                extra={
+                    "tags": {
+                        "playbook": self.playbook,
+                        "run_timestamp": self.run_timestamp,
+                        "play": self.current_play,
+                        "task": self.current_task,
+                        "dump": "runner"
+                    }
                 }
-            }
-        )
+            )
 
     def v2_playbook_on_no_hosts_matched(self):
         self.logger.error(
@@ -263,19 +317,20 @@ class CallbackModule(CallbackBase):
                 }
             }
         )
-        for diff in diff_list:
-            self.logger.debug(
-                self._serialize_diff(diff),
-                extra={
-                    "tags": {
-                        "playbook": self.playbook,
-                        "run_timestamp": self.run_timestamp,
-                        "play": self.current_play,
-                        "task": self.current_task,
-                        "dump": "diff"
+        if self._dump_enabled("diff"):
+            for diff in diff_list:
+                self.logger.debug(
+                    self._serialize_diff(diff),
+                    extra={
+                        "tags": {
+                            "playbook": self.playbook,
+                            "run_timestamp": self.run_timestamp,
+                            "play": self.current_play,
+                            "task": self.current_task,
+                            "dump": "diff"
+                        }
                     }
-                }
-            )
+                )
 
     def v2_playbook_on_stats(self, stats):
         summarize_metrics = {}
