@@ -41,7 +41,7 @@
 - name: Testunreachable
   hosts: unreachable
   gather_facts: no
-  ignore_errors: yes
+  ignore_unreachable: yes
   tasks:
     - name: Call github
       uri:
