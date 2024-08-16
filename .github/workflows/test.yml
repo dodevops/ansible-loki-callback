@@ -34,4 +34,4 @@ jobs:
         working-directory: test
         env:
           LOKI_ENABLED_DUMPS: play
-        run: python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=21 -vvv
+        run: python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=27 -vvv
