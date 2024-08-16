@@ -27,8 +27,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
-      - name: Run test
-        run: |
-          cd test
-          python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=21 -vvv
-          LOKI_ENABLED_DUMPS=play python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=27 -vvv
+      - name: Run default test
+        working-directory: test
+        run: python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=21 -vvv
+      - name: Run dump configuration test
+        working-directory: test
+        env:
+          LOKI_ENABLED_DUMPS: play
+        run: python -m ansible.cli.playbook playbook.yaml -i default/inventory.yaml -e expected_records=21 -vvv
