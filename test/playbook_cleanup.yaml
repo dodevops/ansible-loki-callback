@@ -1,0 +1,9 @@
+- hosts: 127.0.0.1
+  gather_facts: false
+  connection: local
+  name: Stop Loki
+  tasks:
+    - name: Stop Loki container
+      docker_container:
+        name: "ansible-loki-callback-test"
+        state: stopped

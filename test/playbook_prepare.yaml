@@ -1,0 +1,21 @@
+- hosts: 127.0.0.1
+  gather_facts: false
+  connection: local
+  name: Start Loki
+  tasks:
+    - name: Start Loki container
+      docker_container:
+        image: "grafana/loki:3.0.1"
+        name: "ansible-loki-callback-test"
+        auto_remove: true
+        published_ports:
+          - "3100:3100"
+        state: started
+      register: loki_container
+    - name: Wait for Loki to be ready
+      uri:
+        url: "http://localhost:3100/ready"
+      register: _result
+      until: _result.status == 200
+      retries: 100
+      delay: 5
