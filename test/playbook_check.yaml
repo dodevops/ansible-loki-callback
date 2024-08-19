@@ -1,0 +1,19 @@
+- hosts: 127.0.0.1
+  gather_facts: false
+  connection: local
+  name: "Checking results"
+  tasks:
+    - name: "Fetching number of recorded logs"
+      uri:
+        url: http://localhost:3100/loki/api/v1/query_range?query={{ '{run="test"}' | urlencode }}
+        body_format: json
+      register: logs
+    - name: tmp1
+      ansible.builtin.debug:
+        var: expected_records
+    - name: tmp2
+      ansible.builtin.debug:
+        var: logs.json.data.result | length
+    - fail:
+        msg: "Invalid number of records"
+      when: logs.json.data.result | length != expected_records | int
